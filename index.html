@@ -1,0 +1,343 @@
+<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" type="text/css" href="/style.css" />
+    <title>Path Drawing Tool</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="menu">javascript required</div>
+      <div id="canvas"></div>
+    </div>
+    <script>
+      const MAG_RADIUS = 3;
+      function createSVGGroup() {
+        return document.createElementNS("http://www.w3.org/2000/svg", "g");
+      }
+      function createSvgElement(width, height) {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("width", width);
+        svg.setAttribute("height", height);
+        return svg;
+      }
+      function createSvgCircle(x, y, r, fill) {
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", x);
+        circle.setAttribute("cy", y);
+        circle.setAttribute("r", r);
+        circle.setAttribute("fill", fill);
+        return circle;
+      }
+      function createSvgLine(x1, y1, x2, y2) {
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", x1);
+        line.setAttribute("y1", y1);
+        line.setAttribute("x2", x2);
+        line.setAttribute("y2", y2);
+        line.setAttribute("stroke", "black");
+        line.setAttribute("line-width", 1);
+        return line;
+      }
+      function createSvgRect(x, y, width, height) {
+        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        rect.setAttribute("width", width);
+        rect.setAttribute("height", height);
+        rect.setAttribute("x", x);
+        rect.setAttribute("y", y);
+        rect.setAttribute("stroke", "black");
+        rect.setAttribute("line-width", 1);
+        rect.setAttribute("fill", "transparent");
+        return rect;
+      }
+      function getCanvasRect() {
+        const boundingClientRect = canvasElement.getBoundingClientRect();
+        return {
+          "width": boundingClientRect.width,
+          "height": boundingClientRect.height,
+          "top": boundingClientRect.top,
+          "left": boundingClientRect.left
+        };
+      }
+      function inCircle(a, b, r) {
+        return (a.x - b.x) ** 2 + (a.y - b.y) ** 2 < r ** 2;
+      }
+      function inRectangle(x, y, rectangle) {
+        return (
+          x > rectangle["minX"] && x < rectangle["maxX"] &&
+          y > rectangle["minY"] && y < rectangle["maxY"]
+        );
+      }
+      function buildBezierPath(points) {
+        const commands = [`M ${points[0].x} ${points[0].y}`];
+        for (let i = 1; i < points.length; i += 3) {
+          const quadraticCurveToParams = [
+            `${points[i].x} ${points[i].y}`,
+            `${points[i+1].x} ${points[i+1].y}`,
+            `${points[i+2].x} ${points[i+2].y}`
+          ];
+          commands.push(`C ${quadraticCurveToParams.join(", ")}`);
+        }
+        return commands.join(" ");
+      }
+      function drawShapes() {
+        const g = createSVGGroup();
+        for (const shape of shapes) {
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("d", buildBezierPath(shape));
+          path.setAttribute("fill", "transparent");
+          path.setAttribute("stroke", "black");
+          path.setAttribute("line-width", 1);
+          g.appendChild(path);
+        }
+        svgShapesG.replaceWith(g);
+        svgShapesG = g;
+      }
+      function drawControlPoints(g, shape) {
+        for (let i = 1; i < shape.length; i += 3) {
+          const linea = createSvgLine(shape[i-1].x, shape[i-1].y, shape[i].x, shape[i].y);
+          g.appendChild(linea);
+          const lineb = createSvgLine(shape[i+1].x, shape[i+1].y, shape[i+2].x, shape[i+2].y);
+          g.appendChild(lineb);
+        }
+      }
+      function drawToolOverlay() {
+        const g = createSVGGroup();
+        if (appMode == "draw") {
+          if (typeof currentShapeIndex != "undefined") {
+            for (const p of shapes[currentShapeIndex]) {
+              const circle = createSvgCircle(p.x, p.y, 3);
+              g.appendChild(circle);
+            }
+            drawControlPoints(g, shapes[currentShapeIndex]);
+          }
+        } else if (appMode == "select") {
+          const selectionRectangle = getSelectionRectangle();
+          if (typeof selectionRectangle != "undefined") {
+            const rect = createSvgRect(
+              selectionRectangle.minX,
+              selectionRectangle.minY,
+              selectionRectangle.maxX - selectionRectangle.minX,
+              selectionRectangle.maxY - selectionRectangle.minY
+            );
+            g.appendChild(rect);
+          }
+          for (const shape of shapes) {drawControlPoints(g, shape);}
+          for (let shapeIndex = 0; shapeIndex < shapes.length; shapeIndex += 1) {
+            const shape = shapes[shapeIndex];
+            for (let pointIndex = 0; pointIndex < shape.length; pointIndex += 1) {
+              const p = shape[pointIndex];
+              let fill = "black";
+              if (typeof selectionRectangle != "undefined") {
+                if (inRectangle(p.x, p.y, selectionRectangle)) {
+                  fill = "red"
+                }
+              }
+              for (const [selectedshapeIndex, selectedPointIndex] of selectedPs) {
+                if (selectedshapeIndex == shapeIndex && selectedPointIndex == pointIndex) {
+                  fill = "red";
+                  break;
+                }
+              }
+              const circle = createSvgCircle(p.x, p.y, 3, fill);
+              g.appendChild(circle);
+              circle.addEventListener("mousedown", function () {
+                selectedPs.push([shapeIndex, pointIndex]);
+                drawToolOverlay();
+              });
+            }
+          }
+        }
+        svgToolG.replaceWith(g);
+        svgToolG = g;
+      }
+      function draw() {
+        drawToolOverlay();
+        drawShapes();
+        replaceMenuElement();
+      }
+      const canvasElement = document.getElementById("canvas");
+      const canvasRect = getCanvasRect();
+      const svgElement = createSvgElement(canvasRect.width, canvasRect.height);
+      let svgShapesG = createSVGGroup();
+      let svgToolG = createSVGGroup();
+      svgElement.appendChild(svgShapesG);
+      svgElement.appendChild(svgToolG);
+      canvasElement.appendChild(svgElement);
+      const shapes = [];
+      let currentShapeIndex;
+      let selectionRectangleStarts, selectionRectangleEnds;
+      let dragStartedAt, psWhenDragStarted;
+      const selectedPs = [];
+      function getSelectionRectangle() {
+        if (typeof selectionRectangleStarts != "undefined" && typeof selectionRectangleEnds != "undefined") {
+          const minX = Math.min(selectionRectangleStarts.x, selectionRectangleEnds.x);
+          const maxX = Math.max(selectionRectangleStarts.x, selectionRectangleEnds.x);
+          const minY = Math.min(selectionRectangleStarts.y, selectionRectangleEnds.y);
+          const maxY = Math.max(selectionRectangleStarts.y, selectionRectangleEnds.y);
+          return {minX, maxX, minY, maxY};
+        }
+      }
+      canvasElement.addEventListener("mouseup", function () {
+        if (appMode == "select") {
+          const selectionRectangle = getSelectionRectangle();
+          while (selectedPs.length) {selectedPs.pop();}
+          if (typeof selectionRectangle != "undefined") {
+            for (let shapeIndex = 0; shapeIndex < shapes.length; shapeIndex += 1) {
+              const shape = shapes[shapeIndex];
+              for (let pointIndex = 0; pointIndex < shape.length; pointIndex += 1) {
+                const point = shape[pointIndex];
+                if (inRectangle(point.x, point.y, selectionRectangle)) {
+                  selectedPs.push([shapeIndex, pointIndex]);
+                }
+              }
+            }
+          }
+          dragStartedAt = undefined;
+          psWhenDragStarted = undefined;
+          selectionRectangleStarts = undefined;
+          selectionRectangleEnds = undefined;
+          draw();
+        }
+      });
+      canvasElement.addEventListener("mousedown", function (event) {
+        const x = event.clientX - canvasRect.left;
+        const y = event.clientY - canvasRect.top;
+        if (appMode == "select") {
+          selectionRectangleStarts = {x, y};
+        } else if (appMode == "draw") {
+          if (closeShape) {
+            currentShapeIndex = undefined;
+            closeShape = false;
+            draw();
+          } else {
+            if (typeof currentShapeIndex == "undefined") {
+              shapes.push([{x, y}, {x, y}, {x, y}, {x, y}]);
+              currentShapeIndex = shapes.length - 1;
+              draw();
+            } else {
+              const shape = shapes[currentShapeIndex];
+              if (inCircle(shape[shape.length - 1], shape[shape.length - 3], MAG_RADIUS)) {
+                currentShapeIndex = undefined;
+                closeShape = false;
+                draw();
+              } else {
+                shape[shape.length - 1] = {x, y};
+                shape.push({x, y}, {x, y}, {x, y});
+                draw();
+              }
+            }
+          }
+        }
+      });
+      let closeShape = false;
+      canvasElement.addEventListener("mousemove", function (event) {
+        if (appMode == "select") {
+          if (event.buttons == 1) {
+            const x = event.clientX - canvasRect.left;
+            const y = event.clientY - canvasRect.top;
+            if (selectedPs.length) {
+              if (typeof dragStartedAt == "undefined") {
+                dragStartedAt = {x, y};
+                psWhenDragStarted = selectedPs.map(([selectedShapeIndex, selectedPointIndex]) => {
+                  return {...shapes[selectedShapeIndex][selectedPointIndex]};
+                });
+              } else {
+                const dx = x - dragStartedAt.x;
+                const dy = y - dragStartedAt.y;
+                for (let selectedPIndex = 0; selectedPIndex < selectedPs.length; selectedPIndex += 1) {
+                  const [selectedShapeIndex, selectedPointIndex] = selectedPs[selectedPIndex];
+                  const pWhenDragStarted = psWhenDragStarted[selectedPIndex];
+                  shapes[selectedShapeIndex][selectedPointIndex] = {
+                    x: pWhenDragStarted.x + dx,
+                    y: pWhenDragStarted.y + dy
+                  };
+                }
+                draw();
+              }
+            } else {
+              selectionRectangleEnds = {x, y};
+              draw();
+            }
+          }
+        } else {
+          if (typeof currentShapeIndex != "undefined") {
+            const shape = shapes[currentShapeIndex];
+            let x = event.clientX - canvasRect.left;
+            let y = event.clientY - canvasRect.top;
+            if (event.buttons == 1) {
+              if (shape.length == 4) {
+                shape[1] = {x, y};
+                shape[2] = {x, y};
+                shape[3] = {x, y};
+              } else {
+                const dx = x - shape[shape.length - 4].x;
+                const dy = y - shape[shape.length - 4].y;
+                shape[shape.length - 3] = {x, y};
+                shape[shape.length - 2] = {x, y};
+                shape[shape.length - 1] = {x, y};
+                shape[shape.length - 5] = {
+                  x: shape[shape.length - 4].x - dx,
+                  y: shape[shape.length - 4].y - dy
+                };
+              }
+              draw();
+            } else if (event.buttons == 0) {
+              if (shape.length == 4) {
+                shape[2] = {x, y};
+                shape[3] = {x, y};
+              } else {
+                if (inCircle(shape[0], {x, y}, MAG_RADIUS)) {
+                  x = shape[0].x;
+                  y = shape[0].y;
+                  closeShape = true;
+                } else {
+                  closeShape = false;
+                  const prevP = shape[shape.length - 3];
+                  if (inCircle(prevP, {x, y}, MAG_RADIUS)) {
+                    x = prevP.x;
+                    y = prevP.y;
+                  }
+                }
+                shape[shape.length - 1] = {x, y};
+                shape[shape.length - 2] = {x, y};
+              }
+              draw();
+            }
+          }
+        }
+      });
+      let menuElement = document.getElementById("menu");
+      let appMode = "draw";
+      function replaceMenuElement() {
+        const menuDisabled = (
+          typeof currentShapeIndex != "undefined" ||
+          typeof selectionRectangleStarts != "undefined"
+        );
+        const el = document.createElement("div");
+        el.classList.add("menu");
+        const modes = ["draw", "select"];
+        for (const mode of modes) {
+          if (appMode == mode || menuDisabled) {
+            const span = document.createElement("span");
+            span.appendChild(document.createTextNode(mode));
+            el.appendChild(span);
+          } else {
+            const a = document.createElement("a");
+            a.appendChild(document.createTextNode(mode));
+            a.setAttribute("href", "#");
+            a.addEventListener("click", function (event) {
+              event.preventDefault();
+              appMode = mode;
+              draw();
+            });
+            el.appendChild(a);
+          }
+        }
+        menuElement.replaceWith(el);
+        menuElement = el;
+      }
+      replaceMenuElement();
+    </script>
+  </body>
+</html>
