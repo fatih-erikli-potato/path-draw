@@ -142,8 +142,10 @@
               const circle = createSvgCircle(p.x, p.y, 3, fill);
               g.appendChild(circle);
               circle.addEventListener("mousedown", function () {
+                while (selectedPs.length) {selectedPs.pop();}
                 selectedPs.push([shapeIndex, pointIndex]);
                 drawToolOverlay();
+                appMode = "move";
               });
             }
           }
