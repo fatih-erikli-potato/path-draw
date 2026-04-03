@@ -371,19 +371,11 @@
         el.classList.add("status");
         el.appendChild(document.createTextNode("zoom"));
         el.appendChild(a("in", function () {
-          if (zoom < 1) {
-            zoom += 0.1;
-          } else {
-            zoom *= 2;
-          }
+          zoom *= 2;
           draw();
         }));
         el.appendChild(a("out", function () {
-          if (zoom <= 1) {
-            zoom -= 0.1;
-          } else {
-            zoom /= 2;
-          }
+          zoom /= 2;
           draw();
         }));
         el.appendChild(span("", "spacer"));
