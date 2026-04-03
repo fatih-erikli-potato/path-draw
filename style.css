@@ -13,7 +13,7 @@ body {
   gap: 10px;
 }
 
-.menu {
+.menu, .status {
   display: flex;
   gap: 5px;
   user-select: none;
@@ -26,4 +26,13 @@ a {
 #canvas {
   flex-grow: 1;
   background: #fff;
+}
+
+.gray {
+  color: gray;
+}
+
+.spacer {
+  background: #dedede;
+  width: 1px;
 }

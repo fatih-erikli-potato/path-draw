@@ -9,6 +9,7 @@
     <div id="app">
       <div id="menu">javascript required</div>
       <div id="canvas"></div>
+      <div id="status">javascript required</div>
     </div>
     <script>
       const MAG_RADIUS = 3;
@@ -59,6 +60,26 @@
           "left": boundingClientRect.left
         };
       }
+      function getPan() {
+        return {
+          "x": pan.x * zoom,
+          "y": pan.y * zoom
+        };
+      }
+      function fromClientXY(x, y) {
+        const pan_ = getPan();
+        return {
+          "x": ((x - canvasRect.left - canvasRect.width / 2) - pan_.x) / zoom,
+          "y": ((y - canvasRect.top - canvasRect.height / 2) - pan_.y) / zoom
+        }
+      }
+      function toScreenXY(x, y) {
+        const pan_ = getPan();
+        return {
+          "x": (x * zoom + canvasRect.width / 2) + pan_.x,
+          "y": (y * zoom + canvasRect.height / 2) + pan_.y
+        };
+      }
       function inCircle(a, b, r) {
         return (a.x - b.x) ** 2 + (a.y - b.y) ** 2 < r ** 2;
       }
@@ -69,12 +90,16 @@
         );
       }
       function buildBezierPath(points) {
-        const commands = [`M ${points[0].x} ${points[0].y}`];
+        const a = toScreenXY(points[0].x, points[0].y);
+        const commands = [`M ${a.x} ${a.y}`];
         for (let i = 1; i < points.length; i += 3) {
+          const b = toScreenXY(points[i].x, points[i].y);
+          const c = toScreenXY(points[i + 1].x, points[i + 1].y);
+          const d = toScreenXY(points[i + 2].x, points[i + 2].y);
           const quadraticCurveToParams = [
-            `${points[i].x} ${points[i].y}`,
-            `${points[i+1].x} ${points[i+1].y}`,
-            `${points[i+2].x} ${points[i+2].y}`
+            `${b.x} ${b.y}`,
+            `${c.x} ${c.y}`,
+            `${d.x} ${d.y}`
           ];
           commands.push(`C ${quadraticCurveToParams.join(", ")}`);
         }
@@ -95,9 +120,13 @@
       }
       function drawControlPoints(g, shape) {
         for (let i = 1; i < shape.length; i += 3) {
-          const linea = createSvgLine(shape[i-1].x, shape[i-1].y, shape[i].x, shape[i].y);
+          const a = toScreenXY(shape[i-1].x, shape[i-1].y);
+          const b = toScreenXY(shape[i].x, shape[i].y);
+          const c = toScreenXY(shape[i+1].x, shape[i+1].y);
+          const d = toScreenXY(shape[i+2].x, shape[i+2].y);
+          const linea = createSvgLine(a.x, a.y, b.x, b.y);
           g.appendChild(linea);
-          const lineb = createSvgLine(shape[i+1].x, shape[i+1].y, shape[i+2].x, shape[i+2].y);
+          const lineb = createSvgLine(c.x, c.y, d.x, d.y);
           g.appendChild(lineb);
         }
       }
@@ -106,7 +135,8 @@
         if (appMode == "draw") {
           if (typeof currentShapeIndex != "undefined") {
             for (const p of shapes[currentShapeIndex]) {
-              const circle = createSvgCircle(p.x, p.y, 3);
+              const screenXY = toScreenXY(p.x, p.y);
+              const circle = createSvgCircle(screenXY.x, screenXY.y, 3);
               g.appendChild(circle);
             }
             drawControlPoints(g, shapes[currentShapeIndex]);
@@ -114,12 +144,10 @@
         } else if (appMode == "select" || appMode == "move") {
           const selectionRectangle = getSelectionRectangle();
           if (typeof selectionRectangle != "undefined") {
-            const rect = createSvgRect(
-              selectionRectangle.minX,
-              selectionRectangle.minY,
-              selectionRectangle.maxX - selectionRectangle.minX,
-              selectionRectangle.maxY - selectionRectangle.minY
-            );
+            const screenXY = toScreenXY(selectionRectangle.minX, selectionRectangle.minY);
+            const width = selectionRectangle.maxX - selectionRectangle.minX;
+            const height = selectionRectangle.maxY - selectionRectangle.minY;
+            const rect = createSvgRect(screenXY.x, screenXY.y, width, height);
             g.appendChild(rect);
           }
           for (const shape of shapes) {drawControlPoints(g, shape);}
@@ -139,7 +167,8 @@
                   break;
                 }
               }
-              const circle = createSvgCircle(p.x, p.y, 3, fill);
+              const screenXY = toScreenXY(p.x, p.y);
+              const circle = createSvgCircle(screenXY.x, screenXY.y, 3, fill);
               g.appendChild(circle);
               circle.addEventListener("mousedown", function () {
                 while (selectedPs.length) {selectedPs.pop();}
@@ -157,6 +186,7 @@
         drawToolOverlay();
         drawShapes();
         replaceMenuElement();
+        replaceStatusElement();
       }
       const canvasElement = document.getElementById("canvas");
       const canvasRect = getCanvasRect();
@@ -204,8 +234,7 @@
         }
       });
       canvasElement.addEventListener("mousedown", function (event) {
-        const x = event.clientX - canvasRect.left;
-        const y = event.clientY - canvasRect.top;
+        const { x, y } = fromClientXY(event.clientX, event.clientY);
         if (appMode == "select") {
           selectionRectangleStarts = {x, y};
         } else if (appMode == "draw") {
@@ -232,15 +261,13 @@
       canvasElement.addEventListener("mousemove", function (event) {
         if (appMode == "select") {
           if (event.buttons == 1) {
-            const x = event.clientX - canvasRect.left;
-            const y = event.clientY - canvasRect.top;
+            const {x, y} = fromClientXY(event.clientX, event.clientY);
             selectionRectangleEnds = {x, y};
             draw();
           }
         } else if (appMode == "move") {
           if (event.buttons == 1) {
-            const x = event.clientX - canvasRect.left;
-            const y = event.clientY - canvasRect.top;
+            const {x, y} = fromClientXY(event.clientX, event.clientY);
             if (typeof dragStartedAt == "undefined") {
               dragStartedAt = {x, y};
               psWhenDragStarted = selectedPs.map(([selectedShapeIndex, selectedPointIndex]) => {
@@ -263,8 +290,7 @@
         } else if (appMode == "draw") {
           if (typeof currentShapeIndex != "undefined") {
             const shape = shapes[currentShapeIndex];
-            let x = event.clientX - canvasRect.left;
-            let y = event.clientY - canvasRect.top;
+            const {x, y} = fromClientXY(event.clientX, event.clientY);
             if (event.buttons == 1) {
               if (shape.length == 4) {
                 shape[1] = {x, y};
@@ -326,21 +352,81 @@
             span.appendChild(document.createTextNode(mode.label));
             el.appendChild(span);
           } else {
-            const a = document.createElement("a");
-            a.appendChild(document.createTextNode(mode.label));
-            a.setAttribute("href", "#");
-            a.addEventListener("click", function (event) {
-              event.preventDefault();
+            el.appendChild(a(mode.label, function () {
               appMode = mode.key;
               draw();
-            });
-            el.appendChild(a);
+            }));
           }
         }
         menuElement.replaceWith(el);
         menuElement = el;
       }
       replaceMenuElement();
+      let zoom = 1;
+      let pan = { x: 0, y: 0 };
+      let panBy = 100;
+      let statusElement = document.getElementById("status");
+      function replaceStatusElement() {
+        const el = document.createElement("div");
+        el.classList.add("status");
+        el.appendChild(document.createTextNode("zoom"));
+        el.appendChild(a("in", function () {
+          if (zoom < 1) {
+            zoom += 0.1;
+          } else {
+            zoom *= 2;
+          }
+          draw();
+        }));
+        el.appendChild(a("out", function () {
+          if (zoom <= 1) {
+            zoom -= 0.1;
+          } else {
+            zoom /= 2;
+          }
+          draw();
+        }));
+        el.appendChild(span("", "spacer"));
+        el.appendChild(span("move"));
+        el.appendChild(a("left", function () {
+          pan.x -= panBy;
+          draw();
+        }));
+        el.appendChild(a("right", function () {
+          pan.x += panBy;
+          draw();
+        }));
+        el.appendChild(a("up", function () {
+          pan.y -= panBy;
+          draw();
+        }));
+        el.appendChild(a("down", function () {
+          pan.y += panBy;
+          draw();
+        }));
+        statusElement.replaceWith(el);
+        statusElement = el;
+      }
+      replaceStatusElement();
+      function text(t) {return document.createTextNode(t);}
+      function span(t, className) {
+        const spanTag = document.createElement("span");
+        spanTag.appendChild(text(t));
+        if (typeof className != "undefined") {
+          spanTag.classList.add(className);
+        }
+        return spanTag;
+      }
+      function a(label, onclick) {
+        const aTag = document.createElement("a");
+        aTag.setAttribute("href", "#");
+        aTag.appendChild(document.createTextNode(label));
+        aTag.addEventListener("click", function (event) {
+          event.preventDefault();
+          onclick();
+        })
+        return aTag
+      }
     </script>
   </body>
 </html>
