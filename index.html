@@ -16,10 +16,10 @@
       function createSVGGroup() {
         return document.createElementNS("http://www.w3.org/2000/svg", "g");
       }
-      function createSvgElement(width, height) {
+      function createSvgElement() {
         const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        svg.setAttribute("width", width);
-        svg.setAttribute("height", height);
+        svg.setAttribute("width", "100%");
+        svg.setAttribute("height", "100%");
         return svg;
       }
       function createSvgCircle(x, y, r, fill) {
@@ -189,8 +189,8 @@
         replaceStatusElement();
       }
       const canvasElement = document.getElementById("canvas");
-      const canvasRect = getCanvasRect();
-      const svgElement = createSvgElement(canvasRect.width, canvasRect.height);
+      let canvasRect = getCanvasRect();
+      const svgElement = createSvgElement();
       let svgShapesG = createSVGGroup();
       let svgToolG = createSVGGroup();
       svgElement.appendChild(svgShapesG);
@@ -427,6 +427,10 @@
         })
         return aTag
       }
+      window.addEventListener("resize", function () {
+        canvasRect = getCanvasRect();
+        draw();
+      });
     </script>
   </body>
 </html>
