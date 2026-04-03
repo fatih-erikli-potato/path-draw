@@ -144,10 +144,12 @@
         } else if (appMode == "select" || appMode == "move") {
           const selectionRectangle = getSelectionRectangle();
           if (typeof selectionRectangle != "undefined") {
-            const screenXY = toScreenXY(selectionRectangle.minX, selectionRectangle.minY);
-            const width = selectionRectangle.maxX - selectionRectangle.minX;
-            const height = selectionRectangle.maxY - selectionRectangle.minY;
-            const rect = createSvgRect(screenXY.x, screenXY.y, width, height);
+            const minScreenXY = toScreenXY(selectionRectangle.minX, selectionRectangle.minY);
+            const maxScreenXY = toScreenXY(selectionRectangle.maxX, selectionRectangle.maxY)
+
+            const width = maxScreenXY.x - minScreenXY.x;
+            const height = maxScreenXY.y - minScreenXY.y;
+            const rect = createSvgRect(minScreenXY.x, minScreenXY.y, width, height);
             g.appendChild(rect);
           }
           for (const shape of shapes) {drawControlPoints(g, shape);}
