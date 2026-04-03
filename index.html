@@ -12,7 +12,9 @@
       <div id="status">javascript required</div>
     </div>
     <script>
-      const MAG_RADIUS = 3;
+      function getMagRadius() {
+        return 3 / zoom;
+      }
       function createSVGGroup() {
         return document.createElementNS("http://www.w3.org/2000/svg", "g");
       }
@@ -246,7 +248,7 @@
             draw();
           } else {
             const shape = shapes[currentShapeIndex];
-            if (inCircle(shape[shape.length - 1], shape[shape.length - 4], MAG_RADIUS)) {
+            if (inCircle(shape[shape.length - 1], shape[shape.length - 4], getMagRadius())) {
               shape.pop();
               shape.pop();
               shape.pop();
@@ -383,19 +385,19 @@
         el.appendChild(span("", "spacer"));
         el.appendChild(span("move"));
         el.appendChild(a("left", function () {
-          pan.x -= panBy;
+          pan.x -= (panBy / zoom);
           draw();
         }));
         el.appendChild(a("right", function () {
-          pan.x += panBy;
+          pan.x += (panBy / zoom);
           draw();
         }));
         el.appendChild(a("up", function () {
-          pan.y -= panBy;
+          pan.y -= (panBy / zoom);
           draw();
         }));
         el.appendChild(a("down", function () {
-          pan.y += panBy;
+          pan.y += (panBy / zoom);
           draw();
         }));
         statusElement.replaceWith(el);
@@ -423,6 +425,12 @@
       }
       window.addEventListener("resize", function () {
         canvasRect = getCanvasRect();
+        draw();
+      });
+      canvasElement.addEventListener("wheel", function (event) {
+        event.preventDefault();
+        pan.x -= (event.deltaX / zoom);
+        pan.y -= (event.deltaY / zoom);
         draw();
       });
     </script>
