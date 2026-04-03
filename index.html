@@ -111,7 +111,7 @@
             }
             drawControlPoints(g, shapes[currentShapeIndex]);
           }
-        } else if (appMode == "select") {
+        } else if (appMode == "select" || appMode == "move") {
           const selectionRectangle = getSelectionRectangle();
           if (typeof selectionRectangle != "undefined") {
             const rect = createSvgRect(
@@ -193,11 +193,12 @@
               }
             }
           }
-          dragStartedAt = undefined;
-          psWhenDragStarted = undefined;
           selectionRectangleStarts = undefined;
           selectionRectangleEnds = undefined;
           draw();
+        } else if (appMode == "move") {
+          dragStartedAt = undefined;
+          psWhenDragStarted = undefined;
         }
       });
       canvasElement.addEventListener("mousedown", function (event) {
@@ -206,61 +207,58 @@
         if (appMode == "select") {
           selectionRectangleStarts = {x, y};
         } else if (appMode == "draw") {
-          if (closeShape) {
-            currentShapeIndex = undefined;
-            closeShape = false;
+          if (typeof currentShapeIndex == "undefined") {
+            shapes.push([{x, y}, {x, y}, {x, y}, {x, y}]);
+            currentShapeIndex = shapes.length - 1;
             draw();
           } else {
-            if (typeof currentShapeIndex == "undefined") {
-              shapes.push([{x, y}, {x, y}, {x, y}, {x, y}]);
-              currentShapeIndex = shapes.length - 1;
+            const shape = shapes[currentShapeIndex];
+            if (inCircle(shape[shape.length - 1], shape[shape.length - 4], MAG_RADIUS)) {
+              shape.pop();
+              shape.pop();
+              shape.pop();
+              currentShapeIndex = undefined;
               draw();
             } else {
-              const shape = shapes[currentShapeIndex];
-              if (inCircle(shape[shape.length - 1], shape[shape.length - 3], MAG_RADIUS)) {
-                currentShapeIndex = undefined;
-                closeShape = false;
-                draw();
-              } else {
-                shape[shape.length - 1] = {x, y};
-                shape.push({x, y}, {x, y}, {x, y});
-                draw();
-              }
+              shape[shape.length - 1] = {x, y};
+              shape.push({x, y}, {x, y}, {x, y});
+              draw();
             }
           }
         }
       });
-      let closeShape = false;
       canvasElement.addEventListener("mousemove", function (event) {
         if (appMode == "select") {
           if (event.buttons == 1) {
             const x = event.clientX - canvasRect.left;
             const y = event.clientY - canvasRect.top;
-            if (selectedPs.length) {
-              if (typeof dragStartedAt == "undefined") {
-                dragStartedAt = {x, y};
-                psWhenDragStarted = selectedPs.map(([selectedShapeIndex, selectedPointIndex]) => {
-                  return {...shapes[selectedShapeIndex][selectedPointIndex]};
-                });
-              } else {
-                const dx = x - dragStartedAt.x;
-                const dy = y - dragStartedAt.y;
-                for (let selectedPIndex = 0; selectedPIndex < selectedPs.length; selectedPIndex += 1) {
-                  const [selectedShapeIndex, selectedPointIndex] = selectedPs[selectedPIndex];
-                  const pWhenDragStarted = psWhenDragStarted[selectedPIndex];
-                  shapes[selectedShapeIndex][selectedPointIndex] = {
-                    x: pWhenDragStarted.x + dx,
-                    y: pWhenDragStarted.y + dy
-                  };
-                }
-                draw();
-              }
+            selectionRectangleEnds = {x, y};
+            draw();
+          }
+        } else if (appMode == "move") {
+          if (event.buttons == 1) {
+            const x = event.clientX - canvasRect.left;
+            const y = event.clientY - canvasRect.top;
+            if (typeof dragStartedAt == "undefined") {
+              dragStartedAt = {x, y};
+              psWhenDragStarted = selectedPs.map(([selectedShapeIndex, selectedPointIndex]) => {
+                return {...shapes[selectedShapeIndex][selectedPointIndex]};
+              });
             } else {
-              selectionRectangleEnds = {x, y};
+              const dx = x - dragStartedAt.x;
+              const dy = y - dragStartedAt.y;
+              for (let selectedPIndex = 0; selectedPIndex < selectedPs.length; selectedPIndex += 1) {
+                const [selectedShapeIndex, selectedPointIndex] = selectedPs[selectedPIndex];
+                const pWhenDragStarted = psWhenDragStarted[selectedPIndex];
+                shapes[selectedShapeIndex][selectedPointIndex] = {
+                  x: pWhenDragStarted.x + dx,
+                  y: pWhenDragStarted.y + dy
+                };
+              }
               draw();
             }
           }
-        } else {
+        } else if (appMode == "draw") {
           if (typeof currentShapeIndex != "undefined") {
             const shape = shapes[currentShapeIndex];
             let x = event.clientX - canvasRect.left;
@@ -287,18 +285,6 @@
                 shape[2] = {x, y};
                 shape[3] = {x, y};
               } else {
-                if (inCircle(shape[0], {x, y}, MAG_RADIUS)) {
-                  x = shape[0].x;
-                  y = shape[0].y;
-                  closeShape = true;
-                } else {
-                  closeShape = false;
-                  const prevP = shape[shape.length - 3];
-                  if (inCircle(prevP, {x, y}, MAG_RADIUS)) {
-                    x = prevP.x;
-                    y = prevP.y;
-                  }
-                }
                 shape[shape.length - 1] = {x, y};
                 shape[shape.length - 2] = {x, y};
               }
@@ -316,19 +302,34 @@
         );
         const el = document.createElement("div");
         el.classList.add("menu");
-        const modes = ["draw", "select"];
+        const modes = [{
+          "key": "draw",
+          "label": "draw",
+          "enabled": () => typeof currentShapeIndex == "undefined" && typeof selectionRectangleStarts == "undefined" && selectedPs.length == 0
+        }, {
+          "key": "select",
+          "label": "select",
+          "enabled": () => typeof currentShapeIndex == "undefined" && typeof selectionRectangleStarts == "undefined"
+        }];
+        if (selectedPs.length) {
+          modes.push({
+            "key": "move",
+            "label": "move",
+            "enabled": () => true
+          });
+        }
         for (const mode of modes) {
-          if (appMode == mode || menuDisabled) {
+          if (appMode == mode.key || !mode.enabled()) {
             const span = document.createElement("span");
-            span.appendChild(document.createTextNode(mode));
+            span.appendChild(document.createTextNode(mode.label));
             el.appendChild(span);
           } else {
             const a = document.createElement("a");
-            a.appendChild(document.createTextNode(mode));
+            a.appendChild(document.createTextNode(mode.label));
             a.setAttribute("href", "#");
             a.addEventListener("click", function (event) {
               event.preventDefault();
-              appMode = mode;
+              appMode = mode.key;
               draw();
             });
             el.appendChild(a);
