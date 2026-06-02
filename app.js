@@ -1,0 +1,459 @@
+function getMagRadius() {
+  return 3 / zoom;
+}
+function createSVGGroup() {
+  return document.createElementNS("http://www.w3.org/2000/svg", "g");
+}
+function createSvgElement() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  return svg;
+}
+function createSvgCircle(x, y, r, fill) {
+  const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  circle.setAttribute("cx", x);
+  circle.setAttribute("cy", y);
+  circle.setAttribute("r", r);
+  circle.setAttribute("fill", fill);
+  return circle;
+}
+function createSvgLine(x1, y1, x2, y2) {
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  line.setAttribute("x1", x1);
+  line.setAttribute("y1", y1);
+  line.setAttribute("x2", x2);
+  line.setAttribute("y2", y2);
+  line.setAttribute("stroke", "black");
+  line.setAttribute("line-width", 1);
+  return line;
+}
+function createSvgRect(x, y, width, height) {
+  const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  rect.setAttribute("width", width);
+  rect.setAttribute("height", height);
+  rect.setAttribute("x", x);
+  rect.setAttribute("y", y);
+  rect.setAttribute("stroke", "black");
+  rect.setAttribute("line-width", 1);
+  rect.setAttribute("fill", "transparent");
+  return rect;
+}
+function getCanvasRect() {
+  const boundingClientRect = canvasElement.getBoundingClientRect();
+  return {
+    "width": boundingClientRect.width,
+    "height": boundingClientRect.height,
+    "top": boundingClientRect.top,
+    "left": boundingClientRect.left
+  };
+}
+function getPan() {
+  return {
+    "x": pan.x * zoom,
+    "y": pan.y * zoom
+  };
+}
+function fromClientXY(x, y) {
+  const pan_ = getPan();
+  return {
+    "x": ((x - canvasRect.left) - pan_.x) / zoom,
+    "y": ((y - canvasRect.top) - pan_.y) / zoom
+  }
+}
+function toScreenXY(x, y) {
+  const pan_ = getPan();
+  return {
+    "x": x * zoom + pan_.x,
+    "y": y * zoom + pan_.y
+  };
+}
+function inCircle(a, b, r) {
+  return (a.x - b.x) ** 2 + (a.y - b.y) ** 2 < r ** 2;
+}
+function inRectangle(x, y, rectangle) {
+  return (
+    x > rectangle["minX"] && x < rectangle["maxX"] &&
+    y > rectangle["minY"] && y < rectangle["maxY"]
+  );
+}
+function buildBezierPath(points) {
+  const a = toScreenXY(points[0].x, points[0].y);
+  const commands = [`M ${a.x} ${a.y}`];
+  for (let i = 1; i < points.length; i += 3) {
+    const b = toScreenXY(points[i].x, points[i].y);
+    const c = toScreenXY(points[i + 1].x, points[i + 1].y);
+    const d = toScreenXY(points[i + 2].x, points[i + 2].y);
+    const quadraticCurveToParams = [
+      `${b.x} ${b.y}`,
+      `${c.x} ${c.y}`,
+      `${d.x} ${d.y}`
+    ];
+    commands.push(`C ${quadraticCurveToParams.join(", ")}`);
+  }
+  return commands.join(" ");
+}
+function drawShapes() {
+  const g = createSVGGroup();
+  for (const shape of shapes) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", buildBezierPath(shape));
+    path.setAttribute("fill", "transparent");
+    path.setAttribute("stroke", "black");
+    path.setAttribute("line-width", 1);
+    g.appendChild(path);
+  }
+  svgShapesG.replaceWith(g);
+  svgShapesG = g;
+}
+function drawControlPoints(g, shape) {
+  for (let i = 1; i < shape.length; i += 3) {
+    const a = toScreenXY(shape[i-1].x, shape[i-1].y);
+    const b = toScreenXY(shape[i].x, shape[i].y);
+    const c = toScreenXY(shape[i+1].x, shape[i+1].y);
+    const d = toScreenXY(shape[i+2].x, shape[i+2].y);
+    const linea = createSvgLine(a.x, a.y, b.x, b.y);
+    g.appendChild(linea);
+    const lineb = createSvgLine(c.x, c.y, d.x, d.y);
+    g.appendChild(lineb);
+  }
+}
+function drawToolOverlay() {
+  const g = createSVGGroup();
+  if (appMode == "draw") {
+    if (typeof currentShapeIndex != "undefined") {
+      for (const p of shapes[currentShapeIndex]) {
+        const screenXY = toScreenXY(p.x, p.y);
+        const circle = createSvgCircle(screenXY.x, screenXY.y, 3);
+        g.appendChild(circle);
+      }
+      drawControlPoints(g, shapes[currentShapeIndex]);
+    }
+  } else if (appMode == "select" || appMode == "move") {
+    const selectionRectangle = getSelectionRectangle();
+    if (typeof selectionRectangle != "undefined") {
+      const minScreenXY = toScreenXY(selectionRectangle.minX, selectionRectangle.minY);
+      const maxScreenXY = toScreenXY(selectionRectangle.maxX, selectionRectangle.maxY);
+      const width = maxScreenXY.x - minScreenXY.x;
+      const height = maxScreenXY.y - minScreenXY.y;
+      const rect = createSvgRect(minScreenXY.x, minScreenXY.y, width, height);
+      g.appendChild(rect);
+    }
+    for (const shape of shapes) {drawControlPoints(g, shape);}
+    for (let shapeIndex = 0; shapeIndex < shapes.length; shapeIndex += 1) {
+      const shape = shapes[shapeIndex];
+      for (let pointIndex = 0; pointIndex < shape.length; pointIndex += 1) {
+        const p = shape[pointIndex];
+        let fill = "black";
+        if (typeof selectionRectangle != "undefined") {
+          if (inRectangle(p.x, p.y, selectionRectangle)) {
+            fill = "red"
+          }
+        }
+        for (const [selectedshapeIndex, selectedPointIndex] of selectedPs) {
+          if (selectedshapeIndex == shapeIndex && selectedPointIndex == pointIndex) {
+            fill = "red";
+            break;
+          }
+        }
+        const screenXY = toScreenXY(p.x, p.y);
+        const circle = createSvgCircle(screenXY.x, screenXY.y, 3, fill);
+        g.appendChild(circle);
+        circle.addEventListener("mousedown", function () {
+          while (selectedPs.length) {selectedPs.pop();}
+          selectedPs.push([shapeIndex, pointIndex]);
+          drawToolOverlay();
+          appMode = "move";
+        });
+      }
+    }
+  }
+  svgToolG.replaceWith(g);
+  svgToolG = g;
+}
+function draw() {
+  drawToolOverlay();
+  drawShapes();
+  replaceMenuElement();
+  replaceStatusElement();
+}
+const canvasElement = document.getElementById("canvas");
+let canvasRect = getCanvasRect();
+const svgElement = createSvgElement();
+let svgShapesG = createSVGGroup();
+let svgToolG = createSVGGroup();
+svgElement.appendChild(svgShapesG);
+svgElement.appendChild(svgToolG);
+canvasElement.appendChild(svgElement);
+const shapes = [];
+let currentShapeIndex;
+let selectionRectangleStarts, selectionRectangleEnds;
+let dragStartedAt, psWhenDragStarted;
+const selectedPs = [];
+function getSelectionRectangle() {
+  if (typeof selectionRectangleStarts != "undefined" && typeof selectionRectangleEnds != "undefined") {
+    const minX = Math.min(selectionRectangleStarts.x, selectionRectangleEnds.x);
+    const maxX = Math.max(selectionRectangleStarts.x, selectionRectangleEnds.x);
+    const minY = Math.min(selectionRectangleStarts.y, selectionRectangleEnds.y);
+    const maxY = Math.max(selectionRectangleStarts.y, selectionRectangleEnds.y);
+    return {minX, maxX, minY, maxY};
+  }
+}
+canvasElement.addEventListener("mouseup", function () {
+  if (appMode == "select") {
+    const selectionRectangle = getSelectionRectangle();
+    while (selectedPs.length) {selectedPs.pop();}
+    if (typeof selectionRectangle != "undefined") {
+      for (let shapeIndex = 0; shapeIndex < shapes.length; shapeIndex += 1) {
+        const shape = shapes[shapeIndex];
+        for (let pointIndex = 0; pointIndex < shape.length; pointIndex += 1) {
+          const point = shape[pointIndex];
+          if (inRectangle(point.x, point.y, selectionRectangle)) {
+            selectedPs.push([shapeIndex, pointIndex]);
+          }
+        }
+      }
+    }
+    selectionRectangleStarts = undefined;
+    selectionRectangleEnds = undefined;
+    draw();
+  } else if (appMode == "move") {
+    dragStartedAt = undefined;
+    psWhenDragStarted = undefined;
+  }
+});
+canvasElement.addEventListener("mousedown", function (event) {
+  const { x, y } = fromClientXY(event.clientX, event.clientY);
+  if (event.buttons == 1) {
+    if (appMode == "select") {
+      selectionRectangleStarts = {x, y};
+    } else if (appMode == "draw") {
+      if (typeof currentShapeIndex == "undefined") {
+        shapes.push([{x, y}, {x, y}, {x, y}, {x, y}]);
+        currentShapeIndex = shapes.length - 1;
+        draw();
+      } else {
+        const shape = shapes[currentShapeIndex];
+        if (inCircle(shape[shape.length - 1], shape[shape.length - 4], getMagRadius())) {
+          shape.pop();
+          shape.pop();
+          shape.pop();
+          currentShapeIndex = undefined;
+          draw();
+        } else {
+          shape[shape.length - 1] = {x, y};
+          shape.push({x, y}, {x, y}, {x, y});
+          draw();
+        }
+      }
+    }
+  }
+});
+canvasElement.addEventListener("mousemove", function (event) {
+  if (appMode == "select") {
+    if (event.buttons == 1) {
+      const {x, y} = fromClientXY(event.clientX, event.clientY);
+      selectionRectangleEnds = {x, y};
+      draw();
+    }
+  } else if (appMode == "move") {
+    if (event.buttons == 1) {
+      const {x, y} = fromClientXY(event.clientX, event.clientY);
+      if (typeof dragStartedAt == "undefined") {
+        dragStartedAt = {x, y};
+        psWhenDragStarted = selectedPs.map(([selectedShapeIndex, selectedPointIndex]) => {
+          return {...shapes[selectedShapeIndex][selectedPointIndex]};
+        });
+      } else {
+        const dx = x - dragStartedAt.x;
+        const dy = y - dragStartedAt.y;
+        for (let selectedPIndex = 0; selectedPIndex < selectedPs.length; selectedPIndex += 1) {
+          const [selectedShapeIndex, selectedPointIndex] = selectedPs[selectedPIndex];
+          const pWhenDragStarted = psWhenDragStarted[selectedPIndex];
+          shapes[selectedShapeIndex][selectedPointIndex] = {
+            x: pWhenDragStarted.x + dx,
+            y: pWhenDragStarted.y + dy
+          };
+        }
+        draw();
+      }
+    }
+  } else if (appMode == "draw") {
+    if (typeof currentShapeIndex != "undefined") {
+      const shape = shapes[currentShapeIndex];
+      const {x, y} = fromClientXY(event.clientX, event.clientY);
+      if (event.buttons == 1) {
+        if (shape.length == 4) {
+          shape[1] = {x, y};
+          shape[2] = {x, y};
+          shape[3] = {x, y};
+        } else {
+          const dx = x - shape[shape.length - 4].x;
+          const dy = y - shape[shape.length - 4].y;
+          shape[shape.length - 3] = {x, y};
+          shape[shape.length - 2] = {x, y};
+          shape[shape.length - 1] = {x, y};
+          shape[shape.length - 5] = {
+            x: shape[shape.length - 4].x - dx,
+            y: shape[shape.length - 4].y - dy
+          };
+        }
+        draw();
+      } else if (event.buttons == 0) {
+        if (shape.length == 4) {
+          shape[2] = {x, y};
+          shape[3] = {x, y};
+        } else {
+          shape[shape.length - 1] = {x, y};
+          shape[shape.length - 2] = {x, y};
+        }
+        draw();
+      }
+    }
+  }
+});
+let menuElement = document.getElementById("menu");
+let appMode = "draw";
+function replaceMenuElement() {
+  const menuDisabled = (
+    typeof currentShapeIndex != "undefined" ||
+    typeof selectionRectangleStarts != "undefined"
+  );
+  const el = document.createElement("div");
+  el.classList.add("menu");
+  const modes = [{
+    "key": "draw",
+    "label": "draw",
+    "enabled": () => typeof currentShapeIndex == "undefined" && typeof selectionRectangleStarts == "undefined" && selectedPs.length == 0
+  }, {
+    "key": "select",
+    "label": "select",
+    "enabled": () => typeof currentShapeIndex == "undefined" && typeof selectionRectangleStarts == "undefined"
+  }];
+  if (selectedPs.length) {
+    modes.push({
+      "key": "move",
+      "label": "move",
+      "enabled": () => true
+    });
+  }
+  for (const mode of modes) {
+    if (appMode == mode.key || !mode.enabled()) {
+      const span = document.createElement("span");
+      span.appendChild(document.createTextNode(mode.label));
+      el.appendChild(span);
+    } else {
+      el.appendChild(a(mode.label, function () {
+        appMode = mode.key;
+        draw();
+      }));
+    }
+  }
+  menuElement.replaceWith(el);
+  menuElement = el;
+}
+replaceMenuElement();
+let zoom = 1;
+let pan = { x: 0, y: 0 };
+let panBy = 100;
+let statusElement = document.getElementById("status");
+function replaceStatusElement() {
+  const el = document.createElement("div");
+  el.classList.add("status");
+  el.appendChild(document.createTextNode("zoom"));
+  el.appendChild(a("in", function () {
+    zoom *= 2;
+    draw();
+  }));
+  el.appendChild(a("out", function () {
+    zoom /= 2;
+    draw();
+  }));
+  el.appendChild(span("", "spacer"));
+  el.appendChild(span("move"));
+  el.appendChild(a("left", function () {
+    pan.x -= (panBy / zoom);
+    draw();
+  }));
+  el.appendChild(a("right", function () {
+    pan.x += (panBy / zoom);
+    draw();
+  }));
+  el.appendChild(a("up", function () {
+    pan.y -= (panBy / zoom);
+    draw();
+  }));
+  el.appendChild(a("down", function () {
+    pan.y += (panBy / zoom);
+    draw();
+  }));
+  statusElement.replaceWith(el);
+  statusElement = el;
+}
+replaceStatusElement();
+function text(t) {return document.createTextNode(t);}
+function span(t, className) {
+  const spanTag = document.createElement("span");
+  spanTag.appendChild(text(t));
+  if (typeof className != "undefined") {
+    spanTag.classList.add(className);
+  }
+  return spanTag;
+}
+function a(label, onclick) {
+  const aTag = document.createElement("a");
+  aTag.setAttribute("href", "#");
+  aTag.appendChild(document.createTextNode(label));
+  aTag.addEventListener("click", function (event) {
+    event.preventDefault();
+    onclick();
+  })
+  return aTag;
+}
+window.addEventListener("resize", function () {
+  canvasRect = getCanvasRect();
+  draw();
+});
+canvasElement.addEventListener("wheel", function (event) {
+  event.preventDefault();
+  if (event.shiftKey) {
+    let { x, y } = fromClientXY(event.clientX, event.clientY);
+    const m = 1.05;
+    if (event.deltaY < 0) {
+      zoom *= m;
+    } else {
+      zoom /= m;
+    }
+    pan.x = canvasRect.width/2/zoom -x;
+    pan.y = canvasRect.height/2/zoom -y;
+    let dx = (event.clientX - canvasRect.left - canvasRect.width / 2);
+    let dy = (event.clientY - canvasRect.top - canvasRect.height / 2);
+    dx /= zoom;
+    dy /= zoom;
+    pan.x += dx;
+    pan.y += dy;
+  } else {
+    pan.x -= (event.deltaX / zoom);
+    pan.y -= (event.deltaY / zoom);
+  }
+  draw();
+});
+canvasElement.addEventListener("contextmenu", function (event) {
+  event.preventDefault();
+  let { x, y } = fromClientXY(event.clientX, event.clientY);
+  zoom *= 2;
+  pan.x = canvasRect.width/2/zoom - x;
+  pan.y = canvasRect.height/2/zoom - y;
+  
+  if (event.shiftKey) {
+    let dx = (event.clientX - canvasRect.left);
+    let dy = (event.clientY - canvasRect.top);
+    dx -= canvasRect.width / 2;
+    dy -= canvasRect.height / 2;
+    dx /= zoom;
+    dy /= zoom;
+    pan.x += dx;
+    pan.y += dy;
+  }
+  draw();
+});
