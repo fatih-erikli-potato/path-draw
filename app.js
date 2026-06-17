@@ -1,3 +1,4 @@
+const STROKEWIDTH = 1.2;
 function getMagRadius() {
   return 3 / zoom;
 }
@@ -25,7 +26,7 @@ function createSvgLine(x1, y1, x2, y2) {
   line.setAttribute("x2", x2);
   line.setAttribute("y2", y2);
   line.setAttribute("stroke", "black");
-  line.setAttribute("line-width", 1);
+  line.setAttribute("stroke-width", STROKEWIDTH);
   return line;
 }
 function createSvgRect(x, y, width, height) {
@@ -35,7 +36,7 @@ function createSvgRect(x, y, width, height) {
   rect.setAttribute("x", x);
   rect.setAttribute("y", y);
   rect.setAttribute("stroke", "black");
-  rect.setAttribute("line-width", 1);
+  rect.setAttribute("stroke-width", STROKEWIDTH);
   rect.setAttribute("fill", "transparent");
   return rect;
 }
@@ -100,7 +101,7 @@ function drawShapes() {
     path.setAttribute("d", buildBezierPath(shape));
     path.setAttribute("fill", "transparent");
     path.setAttribute("stroke", "black");
-    path.setAttribute("line-width", 1);
+    path.setAttribute("stroke-width", 1);
     g.appendChild(path);
   }
   svgShapesG.replaceWith(g);
