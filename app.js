@@ -101,7 +101,7 @@ function drawShapes() {
     path.setAttribute("d", buildBezierPath(shape));
     path.setAttribute("fill", "transparent");
     path.setAttribute("stroke", "black");
-    path.setAttribute("stroke-width", 1);
+    path.setAttribute("stroke-width", STROKEWIDTH);
     g.appendChild(path);
   }
   svgShapesG.replaceWith(g);
